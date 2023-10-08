@@ -1,0 +1,168 @@
+//* A dynamically typed value, used with {{json}}/etc
+
+import std::vector::Vector
+import std::compact_map::Map
+import std::json
+import std::buffer::Buffer
+import std::span::Span
+import std::libc::{ calloc, free }
+
+enum ValueType {
+    Null
+    Bool
+    Integer
+    String
+    List
+    Dictionary
+}
+
+def ValueType::str(this): str => .dbg()
+
+union ValueUnion {
+    as_bool: bool
+    as_num: i64
+    as_str: Buffer
+    as_list: &Vector<&Value>
+    as_dict: &Map<str, &Value>
+}
+
+struct Value {
+    type: ValueType
+    u: ValueUnion
+    span: Span
+}
+
+def Value::new(type: ValueType): &Value {
+    let val = calloc(1, sizeof(Value)) as &Value
+    val.type = type
+    match type {
+        Dictionary => val.u.as_dict = Map<str, &Value>::new()
+        List => val.u.as_list = Vector<&Value>::new()
+        else => {}
+    }
+    val.span = Span::default()
+    return val
+}
+
+def Value::new_str_buf(buf: Buffer): &Value {
+    let val = Value::new(String)
+    val.u.as_str = buf
+    return val
+}
+
+def Value::new_str(s: str): &Value {
+    let val = Value::new(String)
+    val.u.as_str = Buffer::from_str(s)
+    return val
+}
+
+def Value::new_bool(bul: bool): &Value {
+    let val = Value::new(Bool)
+    val.u.as_bool = bul
+    return val
+}
+
+def Value::new_number(num: i64): &Value {
+    let val = Value::new(Integer)
+    val.u.as_num = num
+    return val
+}
+
+def Value::new_list(vec: &Vector<&Value>): &Value {
+    let val = Value::new(List)
+    free(val.u.as_list)
+    val.u.as_list = vec
+    return val
+}
+
+def Value::new_dict(map: &Map<str, &Value>): &Value {
+    let val = Value::new(Dictionary)
+    free(val.u.as_dict)
+    val.u.as_dict = map
+    return val
+}
+
+def Value::ensure(&this, type: ValueType) {
+    if .type != type {
+        println("Value type mismatch, expected %s but got %s", .type.str(), type.str())
+        exit(1)
+    }
+}
+
+def Value::is(this, type: ValueType): bool => .type == type
+
+def Value::at(&this, idx: u32): &Value {
+    .ensure(List)
+    return .u.as_list.at(idx)
+}
+
+def Value::set(&this, idx: u32, value: &Value) {
+    .ensure(List)
+    .u.as_list.data[idx] = value
+}
+
+def Value::push(&this, value: &Value) {
+    .ensure(List)
+    .u.as_list.push(value)
+}
+
+def Value::get(&this, key: str, defolt: &Value = null): &Value {
+    .ensure(Dictionary)
+    return .u.as_dict.get(key, defolt)
+}
+
+def Value::insert(&this, key: str, value: &Value) {
+    .ensure(Dictionary)
+    .u.as_dict.insert(key, value)
+}
+
+def Value::as_bool(&this): bool {
+    .ensure(Bool)
+    return .u.as_bool
+}
+
+def Value::as_num(&this): i64 {
+    .ensure(Integer)
+    return .u.as_num
+}
+
+def Value::as_str(&this): Buffer {
+    .ensure(String)
+    return .u.as_str
+}
+
+def Value::as_list(&this): &Vector<&Value> {
+    .ensure(List)
+    return .u.as_list
+}
+
+def Value::as_dict(&this): &Map<str, &Value> {
+    .ensure(Dictionary)
+    return .u.as_dict
+}
+
+def Value::dbg(&this): str {
+    let buf = json::serialize(this)
+    return buf.str()
+}
+
+def Value::free(&this) {
+    match .type {
+        String => .u.as_str.free()
+        List => {
+            for val : .u.as_list.iter() {
+                val.free()
+            }
+            .u.as_list.free()
+        }
+        Dictionary => {
+            for iter : .u.as_dict.iter() {
+                free(iter.key)
+                iter.value.free()
+            }
+            .u.as_dict.free()
+        }
+        else => {}
+    }
+    free(this)
+}

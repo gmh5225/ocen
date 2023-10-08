@@ -1,0 +1,176 @@
+//* An order-preserving hash map.
+//*
+//* Uses open addressing with linear probing. Inspired by Python's dict.
+
+import std::vector::{ Vector, Iterator }
+import std::traits::{ hash, eq }
+import std::libc::{ calloc, free, realloc }
+
+const INDEX_FREE: i32 = -1
+const INDEX_DELETED: i32 = -2
+
+struct Item<K, V> {
+    hash: u32
+    key: K
+    value: V
+}
+
+struct Map<K, V> {
+    items: &Vector<Item<K, V>>
+    indices: &i32
+    capacity: u32
+}
+
+def Map::new(capacity: u32 = 16): &Map<K, V> {
+    let items = Vector<Item<K, V>>::new()
+    let indices = calloc(capacity, sizeof(i32)) as &i32
+    for let i = 0; i < capacity; i++ {
+        indices[i] = INDEX_FREE
+    }
+    let map = calloc(1, sizeof(Map<K, V>)) as &Map<K, V>
+    map.items = items
+    map.indices = indices
+    map.capacity = capacity
+    return map
+}
+
+def Map::free(&this) {
+    free(.indices)
+    .items.free()
+    free(this)
+}
+
+def Map::get_index(&this, key: K, hash: u32): u32 {
+    let perturb = hash
+    let j = hash % this.capacity
+    let i = j
+
+    let first_deleted = -1
+    while true {
+        if .indices[i] == INDEX_FREE break
+        if .indices[i] == INDEX_DELETED {
+            if first_deleted < 0 {
+                first_deleted = i as i32
+            }
+        } else {
+            let item = .items.at(.indices[i] as u32) // Should be safe
+            if item.hash == hash and item.key.eq(key) {
+                return i
+            }
+        }
+        j = 5 * j + perturb + 1
+        i = j % .capacity
+        perturb = perturb >> 5
+    }
+    if first_deleted < 0 {
+        return i
+    }
+    return first_deleted as u32
+}
+
+
+// TODO: Don't mess up the insertion order when removing an item. Maybe use a linked list?
+def Map::remove(&this, key: K) {
+    let hash = key.hash()
+    let index = .get_index(key, hash)
+    if .indices[index] == INDEX_FREE {
+        return
+    }
+    assert index >= 0
+
+    let item_index = .indices[index] as u32
+    let item = .items.at(item_index)
+
+    let last_item = .items.at(.items.size - 1)
+    let last_index = .get_index(last_item.key, last_item.hash)
+
+    assert last_index >= 0
+    assert .indices[last_index] >= 0
+
+    let last_item_index = .indices[last_index] as u32
+    assert last_item_index == .items.size - 1 // Sanity check
+
+    .indices[index] = INDEX_DELETED
+    .items.data[item_index] = last_item
+    .items.pop()
+
+    .indices[last_index] = index as i32
+}
+
+def Map::resize(&this, new_capacity: u32) {
+    free(.indices)
+    .indices = calloc(new_capacity, sizeof(i32)) as &i32
+    .capacity = new_capacity
+    for let i = 0; i < new_capacity; i++ {
+        .indices[i] = INDEX_FREE
+    }
+    for let i = 0; i < .items.size; i++ {
+        let item = .items.at(i)
+        let index = .get_index(item.key, item.hash)
+
+        if .indices[index] == INDEX_FREE {
+            .indices[index] = i as i32
+        }
+    }
+}
+
+def Map::insert(&this, key: K, value: V) {
+    let hash = key.hash()
+    let index = .get_index(key, hash)
+
+    if .indices[index] == INDEX_FREE {
+        .indices[index] = .items.size as i32
+        .items.push(Item<K, V>(hash, key, value))
+        if .items.size as u32 >= .capacity {
+            .resize(.capacity * 2)
+        }
+    } else {
+        let item = .items.at(.indices[index] as u32) // Should be safe
+        item.value = value
+    }
+}
+
+def Map::get(&this, key: K, defolt: V): V {
+    let hash = key.hash()
+    let index = .get_index(key, hash)
+    if .indices[index] == INDEX_FREE {
+        return defolt
+    }
+
+    assert index >= 0
+    let item = .items.at(.indices[index] as u32) // Should be safe
+    return item.value
+}
+
+def Map::at(&this, key: K): V {
+    let hash = key.hash()
+    let index = .get_index(key, hash)
+    if .indices[index] == INDEX_FREE {
+        assert false, "Key not found in Map::at()"
+    }
+
+    assert index >= 0
+    let item = .items.at(.indices[index] as u32) // Should be safe
+    return item.value
+}
+
+def Map::is_empty(&this): bool => .items.size == 0
+
+def Map::iter(&this): Iterator<Item<K, V>> => .items.iter()
+def Map::iter_keys(&this): KeyIterator<K, V> => KeyIterator<K, V>(.items.iter())
+def Map::iter_values(&this): ValueIterator<K, V> => ValueIterator<K, V>(.items.iter())
+
+struct KeyIterator<K, V> {
+    iter: Iterator<Item<K, V>>
+}
+def KeyIterator::has_value(&this): bool => .iter.has_value()
+def KeyIterator::next(&this) { .iter.next() }
+def KeyIterator::cur(&this): K => .iter.cur().key
+
+
+struct ValueIterator<K, V> {
+    iter: Iterator<Item<K, V>>
+}
+def ValueIterator::has_value(&this): bool => .iter.has_value()
+def ValueIterator::next(&this) { .iter.next() }
+def ValueIterator::cur(&this): V => .iter.cur().value

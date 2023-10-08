@@ -1,0 +1,4 @@
+/// fail: Name foo already exists in scope
+
+def foo(): i32 { }
+def foo(): bool { }

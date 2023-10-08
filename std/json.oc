@@ -1,0 +1,205 @@
+//* JSON parsing and serialization
+//*
+//* This module heavily relies on {{Value}} as the representation of the data.
+//* It also re-uses the {{Lexer}} from the compiler.
+
+
+import std::buffer::Buffer
+import std::vector::Vector
+import std::value::{ Value, ValueType }
+import std::span::{ Span, Location }
+import std::libc::calloc
+import compiler::lexer::Lexer
+import compiler::tokens::{ Token, TokenType }
+
+//* JSON Parser
+struct Parser {
+    tokens: &Vector<&Token>
+    curr: u32
+}
+
+def Parser::make(tokens: &Vector<&Token>): Parser {
+    let parser: Parser
+    parser.tokens = tokens
+    parser.curr = 0
+    return parser
+}
+
+def Parser::token(&this): &Token => .tokens.at(.curr)
+
+def Parser::consume(&this, type: TokenType): &Token {
+    if .token().type != type {
+        println("Expected %s but got %s", type.str(), .token().type.str())
+        exit(1)
+    }
+    let tok = .token()
+    .curr += 1
+    return tok
+}
+
+def Parser::parse_object(&this): &Value {
+    .consume(TokenType::OpenCurly)
+    let json = Value::new(ValueType::Dictionary)
+    while .token().type != TokenType::CloseCurly {
+        let key = .consume(TokenType::StringLiteral)
+        .consume(TokenType::Colon)
+        let value = .parse_value()
+        json.u.as_dict.insert(key.text, value)
+        if .token().type == TokenType::Comma {
+            .consume(TokenType::Comma)
+        }
+    }
+    .consume(TokenType::CloseCurly)
+    return json
+}
+
+def Parser::parse_array(&this): &Value {
+    .consume(TokenType::OpenSquare)
+    let json = Value::new(ValueType::List)
+    while .token().type != TokenType::CloseSquare {
+        let value = .parse_value()
+        json.u.as_list.push(value)
+        if .token().type == TokenType::Comma {
+            .consume(TokenType::Comma)
+        }
+    }
+    .consume(TokenType::CloseSquare)
+    return json
+}
+
+def Parser::parse_value(&this): &Value => match .token().type {
+    Null => {
+        .consume(TokenType::Null)
+        yield Value::new(ValueType::Null)
+    }
+    True | False => {
+        let json = Value::new(ValueType::Bool)
+        let tok = .token()
+        json.u.as_bool = tok.text.eq("true")
+        .curr += 1
+        yield json
+    }
+    IntLiteral => {
+        let json = Value::new(ValueType::Integer)
+        let tok = .consume(TokenType::IntLiteral)
+        json.u.as_num = tok.text.to_i32() as i64
+        yield json
+    }
+    StringLiteral => {
+        let json = Value::new(ValueType::String)
+        json.u.as_str = Buffer::from_str(.consume(TokenType::StringLiteral).text)
+        yield json
+    }
+    OpenCurly => .parse_object()
+    OpenSquare => .parse_array()
+    else => {
+        println("Unexpected token in json::Parser::parse_value: %s", .token().type.str())
+        exit(1)
+    }
+}
+
+def Parser::parse(&this): &Value => match .token().type {
+    OpenCurly => .parse_object()
+    OpenSquare => .parse_array()
+    else => {
+        println("Expected { or [ at JSON top level")
+        exit(1)
+    }
+}
+
+////////////////////////////////////////////////////////////////////////////////
+
+//* Parse a JSON string into a Value
+def parse(source: str, filename: str = "<anonymous>"): &Value {
+    let lexer = Lexer::make(source, filename)
+    let tokens = lexer.lex()
+    let parser = Parser::make(tokens)
+    return parser.parse()
+}
+
+//* Open and parse a JSON file into a Value
+def parse_from_file(filename: str): &Value {
+    let file = File::open(filename, "r")
+    let source = file.slurp()
+    file.close()
+    return parse(source, filename)
+}
+
+//* Serialize a Value into JSON, into a given Buffer
+def serialize_into(val: &Value, sb: &Buffer) {
+    match val.type {
+        Null => sb.puts("null")
+        Bool => sb.puts(if val.u.as_bool "true" else "false")
+        Integer => sb.putsf(`{val.u.as_num}`)
+        String => {
+            sb.puts("\"")
+            let buf = val.u.as_str
+            for let i = 0; i < buf.size; i += 1 {
+                let c = buf.data[i] as char
+                match c {
+                    '\b' => sb.puts("\\b")
+                    '\f' => sb.puts("\\f")
+                    '\n' => sb.puts("\\n")
+                    '\r' => sb.puts("\\r")
+                    '\t' => sb.puts("\\t")
+                    '\\' => sb.puts("\\\\")
+                    '"' => sb.puts("\\\"")
+                    else => {
+                        if c.is_print() {
+                            sb.putc(c)
+                        } else {
+                            sb.putsf(`\\x{buf.data[i]:02x}`)
+                        }
+                    }
+                }
+            }
+            sb.puts("\"")
+        }
+        List => {
+            sb.puts("[")
+            let lst = val.u.as_list
+            for let i = 0; i < lst.size; i += 1 {
+                let value = lst.at(i)
+                if i > 0 {
+                    sb.puts(",")
+                }
+                serialize_into(value, sb)
+            }
+            sb.puts("]")
+        }
+        Dictionary => {
+            sb.puts("{")
+            let first = true
+            for iter : val.u.as_dict.iter() {
+                if not first {
+                    sb.puts(",")
+                }
+                first = false
+                sb.puts("\"")
+                sb.puts(iter.key)
+                sb.puts("\":")
+                let value = iter.value
+                serialize_into(value, sb)
+            }
+            sb.puts("}")
+        }
+    }
+}
+
+//* Serialize a Value into JSON, returning a new {{Buffer}}
+def serialize(val: &Value): Buffer {
+    let sb = Buffer::make()
+    serialize_into(val, &sb)
+    return sb
+}
+
+//* Serialize a Value into JSON, writing to a file
+def write_to_file(val: &Value, filename: str) {
+    let file = File::open(filename, "w")
+    let sb = serialize(val)
+    file.write(sb.data, sb.size)
+    sb.free()
+    file.close()
+}
+
+

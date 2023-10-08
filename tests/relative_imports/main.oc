@@ -1,0 +1,7 @@
+/// out: "a b c"
+
+import @a::a
+
+def main() {
+	a()
+}

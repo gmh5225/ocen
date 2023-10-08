@@ -1,0 +1,11 @@
+/// compile
+
+import std::image
+import std::vec
+import std::vector
+import std::map
+import std::math
+
+// Just want to make sure that the code compiles
+
+def main() {}

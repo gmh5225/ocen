@@ -1,0 +1,10 @@
+/// fail: Enum value with this name already exists
+
+enum Variable {
+    Integer
+    IntLiteral
+    Float
+    String
+}
+
+def Variable::Integer() {}

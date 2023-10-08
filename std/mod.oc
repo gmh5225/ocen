@@ -1,0 +1,97 @@
+import .libc
+
+@compiler c_embed "./prelude.h"
+
+struct File extern("FILE")
+
+def File::open(path: str, mode: str = "r"): &File {
+    let file = libc::fopen(path, mode)
+    if not file? {
+        panic(`failed to open file: {path}`)
+    }
+    return file
+}
+
+def File::close(&this) extern("fclose")
+
+def File::read(&this, buf: untyped_ptr, size: u32): i32 {
+    return libc::fread(buf, 1, size, this)
+}
+
+def File::write(&this, buf: untyped_ptr, size: u32): i32 {
+    return libc::fwrite(buf, 1, size, this)
+}
+
+def File::slurp(&this): str {
+    import .libc::*
+    let pos = ftell(this)
+    fseek(this, 0, SEEK_END)
+    let size = ftell(this) as u32
+    fseek(this, pos, SEEK_SET)
+    let buf = calloc((size as u32 + 1), sizeof(char))
+    fread(buf, 1, size, this)
+    fseek(this, pos, SEEK_SET)
+    return buf as str
+}
+
+def File::exists(path: str): bool {
+    let file = libc::fopen(path, "r")
+    if not file? {
+        return false
+    }
+    file.close()
+    return true
+}
+
+def File::puts(&this, s: str) {
+    libc::fwrite(s , 1, s.len(), this)
+}
+
+def exit(code: i32 = 0) exits extern
+
+def panic(msg: str = "<panic>") exits {
+    println("%s", msg)
+    exit(1)
+}
+
+def str::to_i32(this): i32 extern("atoi")
+def str::to_u32(this): u32 => this.to_i32() as u32 // FIXME: this doesn't always work
+
+def str::eq(this, other: str): bool => libc::strcmp(this, other) == 0
+def str::len(this): u32 => libc::strlen(this)
+def str::concat(this, src: str) extern("strcat")
+
+def str::copy(this): str extern("strdup")
+
+def str::substring(this, start: u32, len: u32): str {
+    let new_str = libc::calloc((len + 1) as u32, sizeof(char)) as str
+    libc::memcpy(new_str, &this[start], len)
+    return new_str
+}
+
+def str::strip_trailing_whitespace(this) {
+    for let i = .len() - 1; i >= 0; i -= 1 {
+        if this[i] != ' ' break
+        this[i] = '\0'
+    }
+}
+
+def str::remove_last_n(this, n: u32) {
+    this[.len() - n] = '\0'
+}
+
+def str::replace_with(&this, other: str) {
+    libc::free(*this)
+    *this = other
+}
+
+def char::is_digit(this): bool => libc::isdigit(this)
+def char::is_alpha(this): bool => libc::isalpha(this)
+def char::is_alnum(this): bool => libc::isalnum(this)
+def char::is_print(this): bool => libc::isprint(this)
+
+def min(a: i32, b: i32): i32 => if a < b then a else b
+def max(a: i32, b: i32): i32 => if a > b then a else b
+
+def u32::min(this, other: u32): u32 => if this < other then this else other
+def u32::max(this, other: u32): u32 => if this > other then this else other

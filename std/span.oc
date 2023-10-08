@@ -1,0 +1,74 @@
+//* Represents locations / spans in source code
+
+import std // This is just here to separate docs for modules and structs
+
+//* A location in a source file
+struct Location {
+    filename: str
+    line: u32
+    col: u32
+    index: u32
+}
+
+def Location::default(): Location {
+    let loc: Location
+    loc.filename = "<default>"
+    loc.line = 0
+    loc.col = 0
+    loc.index = 0
+    return loc
+}
+
+def Location::str(&this): str { return `{.filename}:{.line}:{.col}`}
+
+def Location::is_valid(&this): bool {
+    return .line > 0 and .col > 0 and .index >= 0
+}
+
+//* Checks if the location is before the other location
+def Location::is_before(&this, other: Location): bool {
+    if .line > other.line return false
+    if .line < other.line return true
+    return .col <= other.col
+}
+
+//* A span in a source file (start and end location)
+struct Span {
+    start: Location
+    end: Location
+}
+
+def Span::str(this): str => `{.start.str()} => {.end.str()}`
+
+def Span::default(): Span {
+    let span: Span
+    span.start = Location(filename: "<default>", line: 0, col: 0, index: 0)
+    span.end = Location(filename: "<default>", line: 0, col: 0, index: 0)
+    return span
+}
+
+def Span::is_valid(this): bool {
+    return .start.is_valid() and .end.is_valid()
+}
+
+// Needs to be called in the correct order!
+def Span::join(this, other: Span): Span {
+    let span: Span
+    span.start = this.start
+    span.end = other.end
+    return span
+}
+
+//* Checks if the location is inside the span
+def Span::contains_loc(this, loc: Location): bool {
+    if not .is_valid() return false
+    if not .start.filename.eq(loc.filename) return false
+    return .start.is_before(loc) and loc.is_before(.end)
+}
+
+//* Checks if the span starts right after the other span
+def Span::starts_right_after(this, other: Span): bool {
+    if not .is_valid() return false
+    if not .start.filename.eq(other.start.filename) return false
+    return .start.index == other.end.index
+}

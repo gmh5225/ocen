@@ -1,0 +1,6 @@
+/// out: "1 2 4 8\n1 2 4 8"
+
+def main() {
+    println(f"{sizeof(i8)} {sizeof(i16)} {sizeof(i32)} {sizeof(i64)}")
+    println(f"{sizeof(u8)} {sizeof(u16)} {sizeof(u32)} {sizeof(u64)}")
+}

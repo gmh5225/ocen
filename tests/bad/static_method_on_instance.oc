@@ -1,0 +1,12 @@
+/// fail: Cannot call static method as instance method
+
+struct Foo {}
+
+def Foo::foo(): i32 {
+    return 0
+}
+
+def main() {
+    let f: Foo
+    println("%d", f.foo())
+}

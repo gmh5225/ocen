@@ -1,0 +1,9 @@
+/// fail: Could not find type with this name
+
+
+def foo(v: &OldVector) {}
+
+def main() {
+    let v = 1
+    foo(&v)
+}

@@ -1,0 +1,9 @@
+/// fail: Name Foo already exists in scope
+
+struct Foo {
+    a: i32
+}
+
+struct Foo {
+    b: bool
+}

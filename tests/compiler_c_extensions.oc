@@ -1,0 +1,14 @@
+/// out: "pass"
+
+// This tests to see if we are actually including the headers
+// and linking to the library correctly with the c flags
+
+@compiler c_include "math.h"
+@compiler c_flag "-lm"
+
+def sqrt(x: f32): f32 extern
+
+def main() {
+    let x = sqrt(4.0)
+    println("pass")
+}

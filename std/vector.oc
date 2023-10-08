@@ -1,0 +1,107 @@
+//* A dynamic list of objects
+
+import std::libc::{calloc, realloc, free}
+
+//* A dynamic list of objects
+struct Vector<T> {
+    data: &T
+    size: u32
+    capacity: u32
+}
+
+def Vector::new(capacity: u32 = 16): &Vector<T> {
+    let list = calloc(1, sizeof(Vector<T>)) as &Vector<T>
+    list.capacity = capacity
+    list.data = calloc(capacity, sizeof(T)) as &T
+    list.size = 0
+    return list
+}
+
+//* Resizes the vector to a new capacity
+def Vector::resize(&this, new_capacity: u32) {
+    .capacity = new_capacity
+    .data = realloc(.data , .capacity * sizeof(T)) as &T
+}
+
+//* Pushes an element to the end of the vector
+def Vector::push(&this, value: T) {
+    if .size == .capacity {
+        .resize(.capacity * 2)
+    }
+    .data[.size] = value
+    .size += 1
+}
+
+//* Pushes an element to the front of the vector
+//* This is an O(n) operation
+def Vector::push_front(&this, value: T) {
+    if .size == .capacity {
+        .resize(.capacity * 2)
+    }
+    for let i = .size; i > 0; i -= 1 {
+        .data[i] = .data[i - 1]
+    }
+    .data[0] = value
+    .size += 1
+}
+
+//* Pops an element from the end of the vector and returns it
+def Vector::pop(&this): T {
+    assert .size > 0, "Empty vector in Vector::pop"
+    .size -= 1
+    return .data[.size]
+}
+
+//* Appends the contents of another vector to this one
+def Vector::extend(&this, other: &Vector<T>) {
+    for val : other.iter() {
+        .push(val)
+    }
+}
+
+//* Returns the last element of the vector
+def Vector::back(&this): T {
+    assert .size > 0, "Empty vector in Vector::back"
+    return .data[.size - 1]
+}
+
+//* Returns the element at the given index
+def Vector::at(&this, i: u32): T {
+    assert i < .size, "Out of bounds in Vector::at"
+    return .data[i]
+}
+
+//* Clears the vector
+//* This does not free the memory
+def Vector::clear(&this) {
+    .size = 0
+}
+
+def Vector::is_empty(&this): bool => .size == 0
+
+def Vector::iter(&this): Iterator<T> => Iterator<T>::make(this)
+
+def Vector::free(&this) {
+    free(.data)
+    free(this)
+}
+
+//* Iterator for the vector
+struct Iterator<T> {
+    vec: &Vector<T>
+    index: u32
+}
+
+def Iterator::make(vec: &Vector<T>): Iterator<T> => Iterator<T>(vec, 0)
+
+def Iterator::has_value(&this): bool => .index < .vec.size
+
+def Iterator::next(&this) {
+    assert .index < .vec.size, "Out of bounds in Iterator::next"
+    .index += 1
+}
+
+def Iterator::cur(&this): T {
+    assert .index < .vec.size, "Out of bounds in Iterator::current"
+    return .vec.data[.index]
+}

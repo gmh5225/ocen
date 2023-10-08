@@ -1,0 +1,7 @@
+/// fail: Argument x has type bool but expected i32
+
+def foo(x: i32) { }
+
+def main() {
+    foo(true)
+}

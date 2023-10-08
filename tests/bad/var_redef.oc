@@ -1,0 +1,6 @@
+/// fail: Variable x already exists in this scope
+
+def main() {
+    let x = 0
+    let x = 7
+}

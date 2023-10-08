@@ -1,0 +1,8 @@
+/// skip
+
+import @b::b::b
+
+def a() {
+	print("a ")
+	b()
+}

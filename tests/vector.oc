@@ -1,0 +1,18 @@
+/// out: "3"
+
+
+import std::vector::Vector
+
+
+def foo(v: &Vector<i32>) {
+    v.push(1)
+}
+
+def main() {
+    let my_List = Vector<i32>::new()
+    foo(my_List)
+    foo(my_List)
+    foo(my_List)
+
+    println(`{my_List.size}`)
+}

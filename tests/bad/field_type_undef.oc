@@ -1,0 +1,5 @@
+/// fail: Could not find type with this name
+
+struct Anything {
+    a: MadeUp
+}

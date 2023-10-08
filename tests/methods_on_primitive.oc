@@ -1,0 +1,11 @@
+/// out: "y = 6"
+
+def u32::plus_one(this): u32 {
+    return this + 1
+}
+
+def main() {
+    let x = 5
+    let y = x.plus_one()
+    println(`y = {y}`)
+}

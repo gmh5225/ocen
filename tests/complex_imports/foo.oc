@@ -1,0 +1,15 @@
+/// skip
+
+namespace lmao {
+    namespace gottem {
+        struct Greeter {}
+        def Greeter::greetings() {
+            println("Hello, World!")
+        }
+    }
+}
+
+def do_foo() {
+    import ::lmao::gottem::Greeter
+    Greeter::greetings()
+}

@@ -1,0 +1,19 @@
+/// exit: 0
+import std::exit
+
+
+def bar() exits {
+	exit(0)
+}
+
+def foo(): i32 {
+	bar()
+}
+
+def baz(): i32 {
+	exit(0)
+}
+
+def main() {
+	foo()
+}

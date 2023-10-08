@@ -1,0 +1,3 @@
+/// fail: Could not find type with this name
+
+def foo(x: i32): Foo { }

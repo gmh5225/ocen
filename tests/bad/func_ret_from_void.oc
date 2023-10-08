@@ -1,0 +1,5 @@
+/// fail: Cannot return a value from a void function
+
+def foo() {
+    return 5
+}

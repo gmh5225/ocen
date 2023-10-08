@@ -1,0 +1,58 @@
+//* A hash-set
+
+import std::map::{ Map, Node, Iterator as MapIterator }
+import std::libc::{ calloc, free }
+
+struct Set<T> {
+    map: &Map<T, bool>
+}
+
+def Set::new(): &Set<T> {
+    let set = calloc(1, sizeof(Set<T>)) as &Set<T>
+    set.map = Map<T, bool>::new()
+    return set
+}
+
+def Set::add(&this, key: T) {
+    .map.insert(key, true)
+}
+
+def Set::remove(&this, key: T) {
+    .map.remove(key)
+}
+
+def Set::size(&this): u32 {
+    return .map.num_items
+}
+
+def Set::extend(&this, other: &Set<T>) {
+    .map.extend(other.map)
+}
+
+def Set::subtract(&this, other: &Set<T>) {
+    for let iter = other.iter(); iter.has_value(); iter.next() {
+        .remove(iter.cur())
+    }
+}
+
+def Set::iter(&this): Iterator<T> => Iterator<T>::make(this)
+def Set::contains(&this, key: T): bool => .map.contains(key)
+def Set::is_empty(&this): bool =>.size() == 0
+
+def Set::free(&this) {
+    .map.free()
+    free(this)
+}
+
+struct Iterator<T> {
+    map_iter: MapIterator<T, bool>
+}
+
+def Iterator::make(set: &Set<T>): Iterator<T> => Iterator<T>(MapIterator<T, bool>::make(set.map))
+def Iterator::has_value(&this): bool => .map_iter.has_value()
+def Iterator::cur(&this): T => .map_iter.cur().key
+def Iterator::next(&this) {
+    .map_iter.next()
+}
+
+// TODO: implement intersection as in-place operation

@@ -1,0 +1,11 @@
+/// fail: Must yield a value in this branch
+
+def main() {
+    let x = if 5 < 10 {
+        {
+            yield "bye"
+        }
+    } else {
+        yield "hi"
+    }
+}

@@ -1,0 +1,5 @@
+/// fail: Method with this name already exists
+
+struct Foo {}
+def Foo::bar(this) {}
+def Foo::bar(this) {}

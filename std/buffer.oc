@@ -1,0 +1,99 @@
+//* A growable buffer / string-builder type
+//*
+//* The buffer is a growable array of bytes, with a null terminator at the end.
+//* It can be used as a string builder, or as a string itself. It is also useful
+//* to hold binary data.
+
+import std::libc::{ realloc, calloc, memcpy, free, exit }
+
+// Maybe abstract away the resizing with a `Buffer` type, 
+// and share this with `OldVector`
+struct Buffer {
+    data: &u8
+    size: u32
+    capacity: u32
+}
+
+def Buffer::make(capacity: u32 = 16): Buffer {
+    return Buffer(
+        data: calloc(capacity, 1),
+        size: 0,
+        capacity
+    )
+}
+
+def Buffer::from_str(s: str): Buffer {
+    return Buffer(
+        data: s as &u8,
+        size: s.len() as u32,
+        capacity: s.len() as u32,
+    )
+}
+
+def Buffer::from_sized_str(s: str, size: u32): Buffer {
+    return Buffer(
+        data: s as &u8,
+        size: size as u32,
+        capacity: s.len() as u32,
+    )
+}
+
+def Buffer::resize_if_necessary(&this, new_size: u32) {
+    if new_size >= .capacity {
+        let new_capacity = max(.capacity as i32 * 2, new_size as i32)
+        .data = realloc(.data, new_capacity as u32) as &u8
+        assert .data?, "Out of memory!"
+    }
+}
+
+def Buffer::hex_dump(&this) {
+    print("(%d bytes): ", .size)
+    for let i = 0; i < .size; i += 1 {
+        if (i % 4 == 0 and i > 0) print("_")
+        print("%02x", .data[i])
+    }
+    println("")
+}
+
+def Buffer::putb(&this, buf: &Buffer) {
+    .resize_if_necessary(new_size: .size + buf.size + 1)
+    memcpy(.data + .size, buf.data, buf.size)
+    .data[.size + buf.size] = '\0' as u8
+    .size += buf.size
+}
+
+def Buffer::putbf(&this, buf: &Buffer) {
+    .putb(buf)
+    buf.free()
+}
+
+def Buffer::puts(&this, s: str) {
+    let len = s.len() as u32
+    .resize_if_necessary(new_size: .size + len as u32 + 1) // +1 for null terminator
+    memcpy(.data + .size, s, len + 1) // Copy over null terminator
+    .size += len
+}
+
+def Buffer::putc(&this, c: char) {
+    .resize_if_necessary(new_size: .size + 2) // +1 for null terminator
+    .data[.size] = c as u8
+    .size += 1
+    .data[.size] = '\0' as u8
+}
+
+// Put and free the string
+def Buffer::putsf(&this, s: str) {
+    .puts(s)
+    free(s)
+}
+
+def Buffer::str(&this): str => .data as str
+def Buffer::new_str(&this): str => (.data as str).copy()
+
+def Buffer::clear(&this) {
+    .size = 0
+}
+
+def Buffer::free(&this) {
+    free(.data)
+}

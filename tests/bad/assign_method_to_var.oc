@@ -1,0 +1,11 @@
+/// fail: Cannot access method without calling it
+
+struct Foo {}
+
+def Foo::get(this) {}
+
+def main() {
+    let f: Foo
+    let g = f.get
+    let h = Foo::get
+}

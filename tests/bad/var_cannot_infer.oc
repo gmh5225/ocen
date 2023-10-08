@@ -1,0 +1,5 @@
+/// fail: Variable x has no type and no initializer
+
+def main() {
+    let x
+}

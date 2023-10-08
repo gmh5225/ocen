@@ -1,0 +1,8 @@
+/// fail: Could not find method foo in structure Foo
+
+struct Foo {}
+
+def main() {
+    Foo::foo()
+    Bar::foo()
+}
