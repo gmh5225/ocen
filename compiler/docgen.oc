@@ -1,4 +1,3 @@
-
 import @ast::program::{ Program, Namespace }
 import @types::{ Type, BaseType }
 import @ast::nodes::*
