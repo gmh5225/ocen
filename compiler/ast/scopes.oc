@@ -1,0 +1,178 @@
+//* Contains Symbol/Scope and related types
+
+import @ast::nodes::{ AST, Structure, Enum, Variable, Function }
+import @ast::program::Namespace
+import @types::Type
+import std::span::{ Span, Location }
+import std::map::Map
+import std::vector::Vector
+import std::libc::calloc
+
+enum SymbolType {
+    Function
+    Structure
+    Enum
+    TypeDef
+    Namespace
+    Variable
+    Constant
+}
+
+struct TemplateInstance {
+    args: &Vector<&Type>
+    parent: &Symbol
+    resolved: &Symbol
+}
+
+def TemplateInstance::new(args: &Vector<&Type>, parent: &Symbol, resolved: &Symbol): &TemplateInstance {
+    let instance = calloc(1, sizeof(TemplateInstance)) as &TemplateInstance
+    instance.args = args
+    instance.parent = parent
+    instance.resolved = resolved
+    return instance
+}
+
+def TemplateInstance::matches(&this, other: &Vector<&Type>): bool {
+    assert other.size == .args.size
+    for let i = 0; i < other.size; i++ {
+        let a = .args.at(i)
+        let b = other.at(i)
+        if not a.eq(b, strict: true) return false
+    }
+    return true
+}
+
+struct Template {
+    params: &Vector<&Variable>
+    instances: &Vector<&TemplateInstance>
+}
+
+def Template::new(params: &Vector<&Variable>): &Template {
+    let templ = calloc(1, sizeof(Template)) as &Template
+    templ.params = params
+    templ.instances = Vector<&TemplateInstance>::new()
+    return templ
+}
+
+union SymbolUnion {
+    func: &Function
+    struc: &Structure
+    enum_: &Enum
+    ns: &Namespace
+    type_def: &Type
+    var: &Variable
+}
+
+struct Symbol {
+    //* Name in the scope it was defined in
+    name: str
+    //* Fully qualified display name, including namespaces
+    display: str
+    //* Name used in the output C code
+    out_name: str
+    //* Span of the declaration
+    span: Span
+    //* Namespace it was defined in
+    ns: &Namespace
+    //* Comment attached to the declaration
+    comment: str
+    comment_loc: Location
+
+    type: SymbolType
+    u: SymbolUnion
+    is_extern: bool
+
+    template: &Template
+}
+
+def Symbol::new(type: SymbolType, ns: &Namespace, name: str, display: str, out_name: str, span: Span): &Symbol {
+    let item = calloc(1, sizeof(Symbol)) as &Symbol
+    item.name = name
+    item.display = display
+    item.out_name = out_name
+    item.span = span
+    item.type = type
+    item.ns = ns
+    return item
+}
+
+def Symbol::join_display(a: str, b: str): str => if a.len() == 0 then b else `{a}::{b}`
+def Symbol::join_out_name(a: str, b: str): str => if a.len() == 0 then b else `{a}_{b}`
+
+def Symbol::is_templated(&this): bool => .template?
+
+def Symbol::new_with_parent(type: SymbolType, ns: &Namespace, parent: &Symbol, name: str, span: Span): &Symbol {
+    let display = Symbol::join_display(parent.display, name)
+    let out_name = Symbol::join_out_name(parent.out_name, name)
+    return Symbol::new(type, ns, name, display, out_name, span)
+}
+
+def Symbol::update_parent(&this, parent: &Symbol) {
+    .display = Symbol::join_display(parent.display, .name)
+    if not .is_extern {
+        .out_name = Symbol::join_out_name(parent.out_name, .name)
+    }
+}
+
+def Symbol::from_local_variable(name: str, var: &Variable, span: Span): &Symbol {
+    let item = Symbol::new(
+        SymbolType::Variable,
+        ns: null,
+        name: name,
+        display: name,
+        out_name: name,
+        span: span,
+    )
+    item.u.var = var
+    return item
+}
+
+def Symbol::remove_alias(&this): &Symbol => match .type {
+    SymbolType::TypeDef => {
+        if .u.type_def.sym != this {
+            return .u.type_def.sym.remove_alias()
+        }
+        return this
+    }
+    else => this
+}
+
+struct Scope {
+    items: &Map<str, &Symbol>
+    defers: &Vector<&AST>
+
+    loop_count: u32
+    can_yield: bool
+    cur_func: &Function
+
+    parent: &Scope
+}
+
+def Scope::new(parent: &Scope): &Scope {
+    let scope = calloc(1, sizeof(Scope)) as &Scope
+    scope.items = Map<str, &Symbol>::new()
+    scope.defers = Vector<&AST>::new()
+    if parent? {
+        scope.loop_count = parent.loop_count
+        scope.can_yield = parent.can_yield
+        scope.cur_func = parent.cur_func
+        scope.parent = parent
+    }
+    return scope
+}
+
+def Scope::lookup_recursive(&this, name: str): &Symbol {
+    let item = .items.get(name, null)
+    if item? return item
+    if .parent? then return .parent.lookup_recursive(name)
+    return null
+}
+
+def Scope::lookup_local(&this, name: str): &Symbol {
+    return .items.get(name, null)
+}
+
+def Scope::insert(&this, name: str, symbol: &Symbol) {
+    .items.insert(name, symbol)
+}
+

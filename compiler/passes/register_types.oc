@@ -1,0 +1,136 @@
+//* Register all types in the program
+
+
+import std::span::Span
+import @passes::generic_pass::GenericPass
+import @ast::scopes::{ Symbol, SymbolType }
+import @ast::program::{ Program, Namespace }
+import @types::{ Type, BaseType, FunctionType }
+import @ast::nodes::{ Function, Structure, Enum, Variable }
+
+struct RegisterTypes {
+    o: &GenericPass
+}
+
+def RegisterTypes::register_struct(&this, ns: &Namespace, struc: &Structure) {
+    let item = struc.sym
+    .o.insert_into_scope_checked(item)
+
+    let typ = Type::new_resolved(Structure, struc.sym.span)
+    typ.u.struc = struc
+    struc.type = typ
+    typ.sym = struc.sym
+}
+
+def RegisterTypes::register_enum(&this, ns: &Namespace, enum_: &Enum) {
+    let item = enum_.sym
+    .o.insert_into_scope_checked(item)
+
+    let typ = Type::new_resolved(Enum, enum_.sym.span)
+    typ.u.enum_ = enum_
+    enum_.type = typ
+    typ.sym = enum_.sym
+
+    // FIXME: Make sure enum values are unique
+    for field : enum_.fields.iter() {
+        field.type = typ
+    }
+}
+
+def RegisterTypes::add_dbg_method_for_enum(&this, enum_: &Enum) {
+    let span = enum_.sym.span
+
+    let func = Function::new()
+    func.span = Span::default()
+    func.sym = Symbol::new_with_parent(Function, enum_.sym.ns, enum_.sym, "dbg", span)
+    func.sym.u.func = func
+    func.return_type = .o.program.get_type_by_name("str", span)
+    func.is_method = true
+    func.parent_type = enum_.type
+
+    let var = Variable::new(enum_.type)
+    var.sym = Symbol::from_local_variable("this", var, span)
+
+    func.params.push(var)
+
+    let typ = Type::new_resolved(Function, span)
+    typ.u.func = FunctionType(func, func.params, func.return_type)
+    func.type = typ
+
+    enum_.type.methods.insert("dbg", func)
+}
+
+def RegisterTypes::register_namespace(&this, ns: &Namespace) {
+    .o.push_scope(ns.scope)
+    for struc : ns.structs.iter() {
+        .register_struct(ns, struc)
+    }
+    for enum_ : ns.enums.iter() {
+        .register_enum(ns, enum_)
+        .add_dbg_method_for_enum(enum_)
+    }
+    for child : ns.namespaces.iter_values() {
+        if child.always_add_to_scope {
+            .o.insert_into_scope_checked(child.sym)
+        }
+        .register_namespace(child)
+    }
+    .o.pop_scope()
+}
+
+
+def RegisterTypes::register_base_type(&this, base: BaseType) {
+    let name = base.str()
+    let sym = Symbol::new(TypeDef, ns: null, name, name, name, Span::default())
+    let typ = Type::new_resolved(base, Span::default())
+    typ.sym = sym
+    sym.u.type_def = typ
+
+    // All base types are global
+    .o.program.global.scope.items.insert(name, sym)
+}
+
+def RegisterTypes::register_alias(&this, name: str, orig: &Type) {
+    let sym = Symbol::new(TypeDef, ns: null, name, name, name, Span::default())
+
+    let alias = Type::new_resolved(BaseType::Alias, Span::default())
+    alias.name = name
+    alias.u.ptr = orig
+    alias.sym = sym
+    sym.u.type_def = alias
+
+    .o.program.global.scope.items.insert(name, sym)
+}
+
+
+def RegisterTypes::register_builtin_types(&this) {
+    for let i = 0; i < BaseType::NUM_BASE_TYPES as u32; i += 1 {
+        .register_base_type(i as BaseType)
+    }
+
+    // untyped_ptr
+    {
+        let base = .o.program.get_base_type(BaseType::Void, Span::default())
+        let typ = Type::new_resolved(BaseType::Pointer, Span::default())
+        typ.u.ptr = base
+        .register_alias("untyped_ptr", typ)
+    }
+
+    // str
+    {
+        let base = .o.program.get_base_type(BaseType::Char, Span::default())
+        let typ = Type::new_resolved(BaseType::Pointer, Span::default())
+        typ.u.ptr = base
+        .register_alias("str", typ)
+    }
+
+    // For internal compiler use
+    .o.error_type = Type::new_resolved(BaseType::Error, Span::default())
+}
+
+
+def RegisterTypes::run(program: &Program) {
+    let pass = RegisterTypes(GenericPass::new(program))
+    pass.register_builtin_types()
+    pass.register_namespace(program.global)
+}

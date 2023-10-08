@@ -1,0 +1,255 @@
+//* Contains the Program/Namespace types
+
+import std::vector::Vector
+import std::span::Span
+import std::map::Map
+import std::libc::{ calloc, exit }
+import @ast::scopes::{ Symbol, Scope }
+import @ast::nodes::{ AST, Function, Structure, Enum }
+import @errors::Error
+import @types::{ Type, BaseType }
+import @parser::Parser
+import @lexer::Lexer
+import @errors::{ display_error_messages }
+import @passes
+
+struct Namespace {
+    parent: &Namespace
+
+    functions: &Vector<&Function>
+    structs: &Vector<&Structure>
+    enums: &Vector<&Enum>
+    constants: &Vector<&AST>
+    variables: &Vector<&AST>
+    imports: &Vector<&AST>
+    namespaces: &Map<str, &Namespace>
+
+    sym: &Symbol
+    scope: &Scope
+    path: str
+    span: Span
+
+    // Does this namespace correspond to an actual file with source code? Or is it just an
+    // intermediate namespace for a directory?
+    is_a_file: bool
+
+    // This is used for any namespaces that need to be added to the scope by default. For instance,
+    // the standard library, or user-defined namespaces with the `namespace` keyword.
+    always_add_to_scope: bool
+
+    // FIXME: This is hacky, but we want to include everything in `std/prelude.oc` in the
+    //        `std` namespace, as opposed to the `std::prelude` namespace. This is done by
+    //        treating `std/prelude.oc` as "top-level", which means all it's contents are put
+    //        in the same namespace as the containing folder. All other files that are imported
+    //        from the same folder will go into a new namespace as per usual.
+    is_top_level: bool
+}
+
+def Namespace::new(parent: &Namespace, path: str): &Namespace {
+    let ns = calloc(1, sizeof(Namespace)) as &Namespace
+    ns.parent = parent
+    let parent_scope = if parent? then parent.scope else null
+    ns.scope = Scope::new(parent_scope)
+    ns.functions = Vector<&Function>::new()
+    ns.structs = Vector<&Structure>::new()
+    ns.enums = Vector<&Enum>::new()
+    ns.constants = Vector<&AST>::new()
+    ns.variables = Vector<&AST>::new()
+    ns.namespaces = Map<str, &Namespace>::new()
+    ns.imports = Vector<&AST>::new()
+    ns.path = path
+    ns.is_a_file = false
+    return ns
+}
+
+def Namespace::find_importable_symbol(&this, name: str): &Symbol {
+    let item = .namespaces.get(name, null)
+    if item? then return item.sym
+
+    for node : .constants.iter() {
+        let var = node.u.var_decl.var
+        if var.sym.name.eq(name) return var.sym
+    }
+
+    for node : .variables.iter() {
+        let var = node.u.var_decl.var
+        if var.sym.name.eq(name) return var.sym
+    }
+
+
+    for func : .functions.iter() {
+        if func.is_method then continue
+        if func.sym.name.eq(name) return func.sym
+    }
+
+    for struc : .structs.iter() {
+        if struc.sym.name.eq(name) return struc.sym
+    }
+
+    for enum_ : .enums.iter() {
+        if enum_.sym.name.eq(name) return enum_.sym
+    }
+    return null
+}
+
+struct Program {
+    global: &Namespace
+    project_root: &Namespace
+
+    //* Structs in topologically sorted order. Filled by {{passes::reorder_structs}}
+    ordered_structs: &Vector<&Structure>
+
+    c_includes: &Vector<str>
+    c_flags: &Vector<str>
+
+    //* Mapping from file name to file contents
+    c_embeds: &Map<str, str>
+
+    gen_debug_info: bool
+    sources: &Map<str, str>
+
+    library_paths: &Vector<str>
+
+    check_doc_links: bool
+    errors: &Vector<&Error>
+    error_level: u32
+}
+
+def Program::new(): &Program {
+    let prog = calloc(1, sizeof(Program)) as &Program
+    prog.global = Namespace::new(null, "")
+    prog.ordered_structs = Vector<&Structure>::new()
+    prog.global.sym = Symbol::new(
+        Namespace,
+        ns: prog.global,
+        name: "",
+        display: "",
+        out_name: "",
+        Span::default()
+    )
+    prog.global.sym.u.ns = prog.global
+    prog.error_level = 1
+    prog.errors = Vector<&Error>::new()
+    prog.c_includes = Vector<str>::new()
+    prog.c_flags = Vector<str>::new()
+    prog.c_embeds = Map<str, str>::new()
+    prog.sources = Map<str, str>::new()
+    prog.library_paths = Vector<str>::new()
+    return prog
+}
+
+def Program::exit_with_errors(&this) {
+    display_error_messages(.errors, .error_level)
+    exit(1)
+}
+
+def Program::get_source_text(&this, span: Span): str {
+    let start = span.start
+    let end = span.end
+
+    let contents = .sources.get(start.filename, null) as str
+    if not contents? return null
+
+    let len = end.index - start.index
+    return contents.substring(start.index, len)
+}
+
+def Program::error(&this, err: &Error): &Error {
+    .errors.push(err)
+    return err
+}
+
+def Program::get_function_deep_copy(&this, old: &Function, ns: &Namespace): &Function {
+    // FIXME: This is a hack to get around the fact that we can't deep-copy
+    // functions yet. We're just going to get the source code of the function
+    // and re-parse it. This is obviously not ideal.
+
+    let func_text = .get_source_text(old.span)
+    if not func_text? return null
+
+    let lexer = Lexer::make(func_text, old.span.start.filename)
+    lexer.loc = old.span.start
+
+    let tokens = lexer.lex()
+    let parser = Parser::make(this, ns)
+
+    parser.tokens = tokens
+    parser.curr = 0
+
+    let func = parser.parse_function()
+    return func
+}
+
+def Program::get_struct_deep_copy(&this, old: &Structure, ns: &Namespace): &Structure {
+    // FIXME: This is a hack to get around the fact that we can't deep-copy
+    // structs yet. We're just going to get the source code of the struct
+    // and re-parse it. This is obviously not ideal.
+
+    let text = .get_source_text(old.span)
+    if not text? return null
+
+    let lexer = Lexer::make(text, old.span.start.filename)
+    lexer.loc = old.span.start
+
+    let tokens = lexer.lex()
+    let parser = Parser::make(this, ns)
+
+    parser.tokens = tokens
+    parser.curr = 0
+
+    let struc = parser.parse_struct()
+    return struc
+}
+
+def Program::get_base_type(&this, base: BaseType, span: Span): &Type {
+    let sym = .global.scope.lookup_local(base.str())
+    if sym? and sym.type == TypeDef {
+        return sym.u.type_def
+    } else {
+        .error(Error::new(span, `Internal compiler error, couldn't find base type {base}`))
+        return null
+    }
+}
+
+def Program::get_type_by_name(&this, name: str, span: Span): &Type {
+    let sym = .global.scope.lookup_local(name)
+    if sym? and sym.type == TypeDef {
+        return sym.u.type_def
+    } else {
+        .error(Error::new(span, `Internal compiler error, couldn't find type {name}`))
+        return null
+    }
+}
+
+def Program::iter_namespaces(&this): NSIterator {
+    let iter = NSIterator(
+        stack: Vector<&Namespace>::new(),
+        curr: null
+    )
+    iter.stack.push(.global)
+    iter.next()
+    return iter
+}
+
+struct NSIterator {
+    stack: &Vector<&Namespace>
+    curr: &Namespace
+}
+
+def NSIterator::has_value(&this): bool => .stack? and not .stack.is_empty()
+
+def NSIterator::next(&this) {
+    assert not .stack.is_empty()
+    .curr = .stack.pop()
+    for ns : .curr.namespaces.iter_values() {
+        .stack.push(ns)
+    }
+    // Done iterating over this namespace, so free the stack
+    if .stack.is_empty() {
+        .curr = null
+        .stack.free()
+        .stack = null
+    }
+}
+
+def NSIterator::cur(&this): &Namespace => .curr

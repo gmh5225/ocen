@@ -1,0 +1,65 @@
+//* Dump the namespace tree for debug
+
+import @ast::program::*
+import @ast::nodes::*
+
+
+struct NamespaceDump {
+    indent: u32
+}
+
+def NamespaceDump::print_indent(&this) {
+    for let i = 0; i < .indent; i += 1 {
+        print("  ")
+    }
+}
+
+def NamespaceDump::print_namespace(&this, ns: &Namespace) {
+    .print_indent()
+    if ns.sym.display.len() == 0 {
+        println("(ns) <root>")
+    } else {
+        println(`(ns) {ns.sym.display}`)
+    }
+
+    .indent += 1
+    for func : ns.functions.iter() {
+        .print_indent()
+        println(`(func) {func.sym.display}`)
+    }
+
+    for struc : ns.structs.iter() {
+        .print_indent()
+        println(`(struct) {struc.sym.display}`)
+    }
+
+    for enum_ : ns.enums.iter() {
+        .print_indent()
+        println(`(enum) {enum_.sym.display}`)
+    }
+
+    for node : ns.variables.iter() {
+        let var = node.u.var_decl.var
+        .print_indent()
+        println(`(var) {var.sym.display}`)
+    }
+
+    for node : ns.constants.iter() {
+        let var = node.u.var_decl.var
+        .print_indent()
+        println(`(const) {var.sym.display}`)
+    }
+
+    .indent -= 1
+}
+
+def NamespaceDump::run(program: &Program) {
+    let pass = NamespaceDump(indent: 0)
+    println("---------------------- Namespace Dump ----------------------")
+
+    for ns : program.iter_namespaces() {
+        pass.print_namespace(ns)
+    }
+
+    println("------------------------------------------------------------")
+}
