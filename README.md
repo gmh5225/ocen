@@ -1,6 +1,6 @@
 # ocen
 
-`ocen` aims to provide you the same level of control over your code as C, but with some modern features like
+`ocen` is AtomOS's compiler and aims to provide you the same level of control over your code as C, but with some modern features like
 type inference, namespaces, stricter types and a module system. It transpiles to C, and can easily bind to C libraries.
 
 ## Usage
